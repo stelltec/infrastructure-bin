@@ -78,7 +78,7 @@ function download_url_to_file {
 
   echo "Downloading $url to $tmp_path"
   if command_exists "curl"; then
-    local -r status_code=$(curl -L -s -w --no-sessionid '%{http_code}' -o "$tmp_path" "$url")
+    local -r status_code=$(curl -L -s -w '%{http_code}' -o "$tmp_path" "$url")
     assert_successful_status_code "$status_code" "$url"
 
     echo "Moving $tmp_path to $file"
