@@ -113,6 +113,7 @@ function fetch_script_module {
   local readonly branch="$3"
   local readonly download_dir="$4"
   local readonly repo="$5"
+  local readonly module_dir="$6"
 
   # We want to make sure that all folders down to $download_path/$module_name exists, but that $download_path/$module_name itself is empty.
   mkdir -p "$download_dir/$module_name/"
@@ -121,7 +122,8 @@ function fetch_script_module {
   # Note that fetch can safely handle blank arguments for --tag or --branch
   # If both --tag and --branch are specified, --branch will be used
   log_info "Downloading module $module_name from $repo"
-  fetch --repo="$repo" --tag="$tag" --branch="$branch" --source-path="/modules/$module_name" "$download_dir/$module_name"
+
+  fetch --repo="$repo" --tag="$tag" --branch="$branch" --source-path="$module_dir/$module_name" "$download_dir/$module_name"
 }
 
 # Download a binary asset from a GitHub release using fetch (https://github.com/gruntwork-io/fetch)
@@ -242,6 +244,7 @@ function install_script_module {
   local repo=""
   local download_dir="$DEFAULT_MODULES_DOWNLOAD_DIR"
   local module_params=()
+  local module_dir="/modules"
 
   while [[ $# > 0 ]]; do
     local key="$1"
@@ -257,6 +260,10 @@ function install_script_module {
         ;;
       --module-name)
         module_name="$2"
+        shift
+        ;;
+      --module-dir)
+        module_dir="$2"
         shift
         ;;
       --binary-name)
@@ -319,7 +326,7 @@ function install_script_module {
 
   if [[ ! -z "$module_name" ]]; then
     log_info "Installing from $module_name..."
-    fetch_script_module "$module_name" "$tag" "$branch" "$download_dir" "$repo"
+    fetch_script_module "$module_name" "$tag" "$branch" "$download_dir" "$repo" "$module_dir"
     validate_module "$module_name" "$download_dir" "$tag" "$branch" "$repo"
     run_module "$module_name" "$download_dir" "${module_params[@]}"
   else
