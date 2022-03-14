@@ -22,7 +22,7 @@ readonly BIN_DIR="/usr/local/bin"
 readonly USER_DATA_DIR="/etc/user-data"
 
 readonly DEFAULT_FETCH_VERSION="v0.4.2"
-readonly FETCH_DOWNLOAD_URL_BASE="https://github.com/stelltec/infrastructure-live-2/blob/master/main/_modules/_gruntwork/_gruntworkio/bin/fetch"
+readonly FETCH_DOWNLOAD_URL_BASE="https://github.com/stelltec/infrastructure-bin/raw/main/bin/fetch"
 
 readonly FETCH_INSTALL_PATH="$BIN_DIR/fetch"
 
