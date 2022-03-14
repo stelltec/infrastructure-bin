@@ -26,7 +26,7 @@ readonly FETCH_DOWNLOAD_URL_BASE="https://github.com/stelltec/infrastructure-bin
 
 readonly FETCH_INSTALL_PATH="$BIN_DIR/fetch"
 
-readonly GRUNTWORK_INSTALLER_DOWNLOAD_URL_BASE="https://github.com/stelltec/infrastructure-bin/raw/main/bin/gruntwork-installer"
+readonly GRUNTWORK_INSTALLER_DOWNLOAD_URL_BASE="https://github.com/stelltec/infrastructure-bin/raw/main/bin/gruntwork-install"
 readonly GRUNTWORK_INSTALLER_INSTALL_PATH="$BIN_DIR/gruntwork-install"
 readonly GRUNTWORK_INSTALLER_SCRIPT_NAME="gruntwork-install"
 
@@ -78,7 +78,7 @@ function download_url_to_file {
 
   echo "Downloading $url to $tmp_path"
   if command_exists "curl"; then
-    local -r status_code=$(curl -L -s -w '%{http_code}' -o "$tmp_path" "$url")
+    local -r status_code=$(curl -L -s -w --no-sessionid '%{http_code}' -o "$tmp_path" "$url")
     assert_successful_status_code "$status_code" "$url"
 
     echo "Moving $tmp_path to $file"
