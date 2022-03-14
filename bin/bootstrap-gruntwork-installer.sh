@@ -26,7 +26,7 @@ readonly FETCH_DOWNLOAD_URL_BASE="https://github.com/stelltec/infrastructure-bin
 
 readonly FETCH_INSTALL_PATH="$BIN_DIR/fetch"
 
-readonly GRUNTWORK_INSTALLER_DOWNLOAD_URL_BASE="https://raw.githubusercontent.com/gruntwork-io/gruntwork-installer"
+readonly GRUNTWORK_INSTALLER_DOWNLOAD_URL_BASE="https://github.com/stelltec/infrastructure-bin/raw/main/bin/gruntwork-installer"
 readonly GRUNTWORK_INSTALLER_INSTALL_PATH="$BIN_DIR/gruntwork-install"
 readonly GRUNTWORK_INSTALLER_SCRIPT_NAME="gruntwork-install"
 

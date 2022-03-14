@@ -1,0 +1,333 @@
+#!/bin/bash
+#
+# This script installs Gruntwork Script Modules. The main motivation in writing it is to make installing
+# Gruntwork Script Modules feel as easy as installing a package using apt-get, brew, or yum.
+#
+# Note that if the user specifies neither --tag nor --branch, the latest tag is downloaded.
+#
+
+set -e
+
+readonly MODULES_DIR="modules"
+readonly MODULE_INSTALL_FILE_NAME="install.sh"
+
+readonly DEFAULT_MODULES_DOWNLOAD_DIR="/tmp/gruntwork-script-modules"
+readonly BIN_DIR="/usr/local/bin"
+
+function print_usage {
+  echo
+  echo "Usage: gruntwork-install [OPTIONS]"
+  echo
+  echo "Download a Gruntwork Script Module and install it."
+  echo
+  echo "Required Arguments:"
+  echo
+  echo -e "  --repo\t\tThe repo to install from."
+  echo -e "  --tag\t\t\tThe version of --repo to install. Follows the syntax described at https://github.com/gruntwork-io/fetch#tag-constraint-expressions."
+  echo
+  echo "Specify exactly one of:"
+  echo
+  echo -e "  --module-name\t\tThe name of a module to install. Can be any folder within the $MODULES_DIR directory of --repo."
+  echo -e "  --binary-name\t\tThe name of a binary to install. Can be any file uploaded as a release asset in --repo."
+  echo -e "  --binary-sha256-checksum\t\tThe SHA256 checksum of the binary specified by --binary-name. Should be exactly 64 characters."
+  echo -e "  --binary-sha512-checksum\t\tThe SHA512 checksum of the binary specified by --binary-name. Should be exactly 128 characters."
+  echo
+  echo "Optional Arguments:"
+  echo
+  echo -e "  --module-param\tA key-value pair of the format key=value you wish to pass to the module as a parameter. May be used multiple times."
+  echo -e "  --download-dir\tThe directory to which the module will be downloaded and from which it will be installed. Default: $DEFAULT_MODULES_DOWNLOAD_DIR"
+  echo -e "  --branch\t\tDownload the latest commit from this branch in --repo. This is an alternative to --tag, used only for testing."
+  echo -e "  --help\t\tShow this help text and exit."
+
+  echo
+  echo "Example:"
+  echo
+  echo "  gruntwork-install \\"
+  echo "    --module-name 'vault-ssh-helper' \\"
+  echo "    --repo 'https://github.com/gruntwork-io/script-modules' \\"
+  echo "    --tag '~>0.0.3' \\"
+  echo "    --module-param 'install-dir=/opt/vault-ssh-helper' \\"
+  echo "    --module-param 'owner=ubuntu'"
+  echo
+}
+
+function log {
+  local readonly level="$1"
+  local readonly message="$2"
+  local readonly timestamp=$(date +"%Y-%m-%d %H:%M:%S")
+  local readonly scriptname="$(basename "$0")"
+
+  >&2 echo -e "${timestamp} [${level}] [$scriptname] ${message}"
+}
+
+function log_info {
+  local readonly message="$1"
+  log "INFO" "$message"
+}
+
+function log_warn {
+  local readonly message="$1"
+  log "WARN" "$message"
+}
+
+function log_error {
+  local readonly message="$1"
+  log "ERROR" "$message"
+}
+
+# Assert that a given binary is installed on this box
+function assert_is_installed {
+  local readonly name="$1"
+
+  if [[ ! $(command -v ${name}) ]]; then
+    log_error "The binary '$name' is required by this script but is not installed or in the system's PATH."
+    exit 1
+  fi
+}
+
+function assert_not_empty {
+  local readonly arg_name="$1"
+  local readonly arg_value="$2"
+
+  if [[ -z "$arg_value" ]]; then
+    log_error "The value for '$arg_name' cannot be empty"
+    print_usage
+    exit 1
+  fi
+}
+
+function assert_env_var_not_empty {
+  local readonly var_name="$1"
+  local readonly var_value="${!var_name}"
+
+  if [[ -z "$var_value" ]]; then
+    log_error "Required environment variable $var_name not set."
+    exit 1
+  fi
+}
+
+# Download the files of the given Script Module using fetch (https://github.com/gruntwork-io/fetch)
+function fetch_script_module {
+  local readonly module_name="$1"
+  local readonly tag="$2"
+  local readonly branch="$3"
+  local readonly download_dir="$4"
+  local readonly repo="$5"
+
+  # We want to make sure that all folders down to $download_path/$module_name exists, but that $download_path/$module_name itself is empty.
+  mkdir -p "$download_dir/$module_name/"
+  rm -Rf "$download_dir/$module_name/"
+
+  # Note that fetch can safely handle blank arguments for --tag or --branch
+  # If both --tag and --branch are specified, --branch will be used
+  log_info "Downloading module $module_name from $repo"
+  fetch --repo="$repo" --tag="$tag" --branch="$branch" --source-path="/modules/$module_name" "$download_dir/$module_name"
+}
+
+# Download a binary asset from a GitHub release using fetch (https://github.com/gruntwork-io/fetch)
+function fetch_binary {
+  local readonly binary_name="$1"
+  local readonly tag="$2"
+  local readonly download_dir="$3"
+  local readonly repo="$4"
+  local readonly sha256_checksum="$5"
+  local readonly sha512_checksum="$6"
+
+  local binary_name_full=""
+  binary_name_full=$(determine_binary_name "$binary_name")
+
+  local readonly full_download_path="$download_dir/$binary_name_full"
+  local readonly full_dest_path="$BIN_DIR/$binary_name"
+
+  # We want to make sure that all folders down to $download_path exist, but that $download_path/$binary_name_full does not
+  mkdir -p "$download_dir"
+  rm -f "$download_dir/$binary_name_full"
+
+  if [[ ! -z "$sha256_checksum" ]]; then
+    fetch --repo="$repo" --tag="$tag" --release-asset="$binary_name_full" "$download_dir" --release-asset-checksum-algo "sha256" --release-asset-checksum "$sha256_checksum"
+   elif [[ ! -z "$sha512_checksum" ]]; then
+    fetch --repo="$repo" --tag="$tag" --release-asset="$binary_name_full" "$download_dir" --release-asset-checksum-algo "sha512" --release-asset-checksum "$sha512_checksum"
+  else
+    fetch --repo="$repo" --tag="$tag" --release-asset="$binary_name_full" "$download_dir"
+  fi
+
+  log_info "Moving $full_download_path to $full_dest_path and setting execute permissions"
+  sudo mv "$full_download_path" "$full_dest_path"
+  sudo chmod u+x "$full_dest_path"
+}
+
+# Validate that at least one file was downloaded from the module; otherwise throw an error.
+function validate_module {
+  local readonly module_name="$1"
+  local readonly download_dir="$2"
+  local readonly tag="$3"
+  local readonly branch="$4"
+  local reaodnly repo="$5"
+
+  if [[ ! -e "$download_dir/$module_name" ]]; then
+    log_error "No files were downloaded. Are you sure \"$module_name\" is a valid Script Module in $repo (tag = $tag, branch = $branch)?"
+    exit 1
+  fi
+}
+
+# http://stackoverflow.com/a/2264537/483528
+function to_lower_case {
+  tr '[:upper:]' '[:lower:]'
+}
+
+function get_os_name {
+  uname | to_lower_case
+}
+
+function get_os_arch {
+  uname -m
+}
+
+function string_contains {
+  local readonly str="$1"
+  local readonly contains="$2"
+
+  [[ "$str" == *"$contains"* ]]
+}
+
+function get_os_arch_gox_format {
+  local readonly arch=$(get_os_arch)
+
+  if $(string_contains "$arch" "64"); then
+    echo "amd64"
+  elif $(string_contains "$arch" "386"); then
+    echo "386"
+  elif $(string_contains "$arch" "arm"); then
+    echo "arm"
+  fi
+}
+
+# We release binaries with the name following the format <NAME>_<OS>_<ARCH> (e.g. foo_linux_amd64). Given the NAME of
+# a binary, this function adds the proper OS and ARCH to it for the current OS.
+function determine_binary_name {
+  local readonly binary_name="$1"
+  local readonly os_name=$(get_os_name)
+  local readonly os_arch=$(get_os_arch_gox_format)
+  echo "${binary_name}_${os_name}_${os_arch}"
+}
+
+# Take in a key-value pair of the format key=value and convert it to the format that Gruntwork bash scripts expect:
+# --key value
+function convert_module_params_format {
+  local readonly key_value_pair="$1"
+  local readonly key="${key_value_pair%%=*}"
+  local readonly val="${key_value_pair#*=}"
+  echo "--${key} \"${val}\""
+}
+
+function run_module {
+  local readonly module_name="$1"
+  local readonly download_dir="$2"
+  shift 2
+  local readonly module_params=($@)
+  local readonly install_script_path="${download_dir}/${module_name}/${MODULE_INSTALL_FILE_NAME}"
+
+  log_info "Executing $install_script_path ${module_params[@]}"
+  chmod u+x "$install_script_path"
+  eval "$install_script_path ${module_params[@]}"
+}
+
+function install_script_module {
+  local tag=""
+  local branch=""
+  local module_name=""
+  local binary_name=""
+  local binary_sha256_checksum=""
+  local binary_sha512_checksum=""
+  local repo=""
+  local download_dir="$DEFAULT_MODULES_DOWNLOAD_DIR"
+  local module_params=()
+
+  while [[ $# > 0 ]]; do
+    local key="$1"
+
+    case "$key" in
+      --tag)
+        tag="$2"
+        shift
+        ;;
+      --branch)
+        branch="$2"
+        shift
+        ;;
+      --module-name)
+        module_name="$2"
+        shift
+        ;;
+      --binary-name)
+        binary_name="$2"
+        shift
+        ;;
+      --binary-sha256-checksum)
+        binary_sha256_checksum="$2"
+        shift
+        ;;
+      --binary-sha512-checksum)
+        binary_sha512_checksum="$2"
+        shift
+        ;;
+      --repo)
+        repo="$2"
+        shift
+        ;;
+      --module-param)
+        local readonly param=$(convert_module_params_format "$2")
+        module_params+=("$param")
+        shift
+        ;;
+      --download-dir)
+        download_dir="$2"
+        shift
+        ;;
+      --help)
+        print_usage
+        exit
+        ;;
+      *)
+        echo "ERROR: Unrecognized option: $key"
+        print_usage
+        exit 1
+        ;;
+    esac
+
+    shift
+  done
+
+  assert_is_installed fetch
+  assert_env_var_not_empty "GITHUB_OAUTH_TOKEN"
+  assert_not_empty "--repo" "$repo"
+
+  if [[ ( -z "$module_name" && -z "$binary_name" ) || ( ! -z "$module_name" && ! -z "$binary_name" ) ]]; then
+    log_error "You must specify exactly one of --module-name or --binary-name."
+    exit 1
+  fi
+
+  if [[ ! -z "$binary_name" && -z "$tag" ]]; then
+    log_error "--binary-name can only be used if you specify a release via --tag."
+    exit 1
+  fi
+
+  if [[ ! -z "$binary_sha256_checksum" && ! -z "$binary_sha512_checksum" ]]; then
+    log_error "You must specify at most one of --binary-sha256-checksum and --binary-sha512-checksum"
+    exit 1
+  fi
+
+  if [[ ! -z "$module_name" ]]; then
+    log_info "Installing from $module_name..."
+    fetch_script_module "$module_name" "$tag" "$branch" "$download_dir" "$repo"
+    validate_module "$module_name" "$download_dir" "$tag" "$branch" "$repo"
+    run_module "$module_name" "$download_dir" "${module_params[@]}"
+  else
+    log_info "Installing $binary_name..."
+    fetch_binary "$binary_name" "$tag" "$download_dir" "$repo" "$binary_sha256_checksum" "$binary_sha512_checksum"
+  fi
+
+  log_info "Success!"
+}
+
+install_script_module "$@"
