@@ -306,7 +306,6 @@ function install_script_module {
   done
 
   assert_is_installed fetch
-  assert_env_var_not_empty "GITHUB_OAUTH_TOKEN"
   assert_not_empty "--repo" "$repo"
 
   if [[ ( -z "$module_name" && -z "$binary_name" ) || ( ! -z "$module_name" && ! -z "$binary_name" ) ]]; then
